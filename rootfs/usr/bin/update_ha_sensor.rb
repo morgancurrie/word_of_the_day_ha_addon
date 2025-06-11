@@ -80,25 +80,39 @@ logger.info("Attempting to update entity: #{ENTITY_ID} with value: \"#{my_value}
 logger.debug("Payload: #{request.body}") # Use debug for verbose output
 
 # --- Send the Request ---
-begin
-  http = Net::HTTP.new(uri.host, uri.port)
-  response = http.request(request)
+MAX_RETRIES = 3
+RETRY_DELAY = 5 # seconds
+retries = 0
 
-  logger.info("Response Code: #{response.code}")
-  # logger.info("Response Body: #{response.body}") # Can be useful for debugging
+loop do
+  begin
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.open_timeout = 10 # seconds
+    http.read_timeout = 10 # seconds
+    response = http.request(request)
 
-  if response.is_a?(Net::HTTPSuccess) # Covers 200-299 status codes
-    logger.info("Successfully updated entity #{ENTITY_ID}.")
-  else
-    logger.error("Failed to update entity #{ENTITY_ID}.")
-    logger.error("Status: #{response.code} - #{response.message}")
-    logger.error("Response Body: #{response.body}")
+    logger.info("Response Code: #{response.code}")
+
+    if response.is_a?(Net::HTTPSuccess) # Covers 200-299 status codes
+      logger.info("Successfully updated entity #{ENTITY_ID}. (#{retries}/#{MAX_RETRIES})")
+      break # Exit loop on success
+    else
+      logger.error("Failed to update entity #{ENTITY_ID}. (#{retries}/#{MAX_RETRIES})")
+      logger.error("Status: #{response.code} - #{response.message}. Response Body: #{response.body}")
+      break # Exit loop on non-success HTTP response
+    end
+
+  rescue StandardError => e # Catch any StandardError from the API request block
+    retries += 1
+    logger.warn("Error during API request: #{e.class} - #{e.message}. Retry #{retries}/#{MAX_RETRIES}. Waiting #{RETRY_DELAY}s...")
+    if retries <= MAX_RETRIES # Allow up to MAX_RETRIES retry attempts (1 initial + MAX_RETRIES retries)
+      sleep RETRY_DELAY
+    else
+      logger.error("Max retries (#{MAX_RETRIES}) reached for API request. Last error: #{e.class} - #{e.message}")
+      logger.error("Backtrace for last error:\n#{e.backtrace.join("\n")}")
+      break # Exit loop after max retries
+    end
   end
-
-rescue SocketError => e
-  logger.error("Network error: Could not connect to Home Assistant API at #{uri}. Check network or HA Core status.")
-  logger.error(e.message)
-rescue StandardError => e
-  logger.error("An unexpected error occurred: #{e.class} - #{e.message}")
-  logger.error(e.backtrace.join("\n"))
 end
+
+sleep(14400)

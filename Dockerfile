@@ -1,15 +1,17 @@
+# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-dockerfile
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Install requirements for add-on
+# Execute during the build of the image
+ARG TEMPIO_VERSION BUILD_ARCH
+RUN \
+    curl -sSLf -o /usr/bin/tempio \
+    "https://github.com/home-assistant/tempio/releases/download/${TEMPIO_VERSION}/tempio_${BUILD_ARCH}"
+
 RUN \
   apk add --no-cache \
     ruby
 
-# Copy data for add-on
-COPY words.csv /
-COPY update_ha_sensor.rb /
-COPY run.sh /
-RUN chmod a+x /run.sh
-
-CMD [ "/run.sh" ]
+ENV S6_KILL_FINISH_MAXTIME=14400000
+# Copy root filesystem
+COPY rootfs /
